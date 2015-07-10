@@ -976,17 +976,30 @@ object Process extends ProcessInstances {
       def tag = 2
       def fold[R](l: => R, r: => R, both: => R): R = both
     }
+    case object BothLeftBias extends Y[ReceiveY[I, I2]] {
+      def tag = 3
+      def fold[R](l: => R, r: => R, both: => R): R = both
+    }
+  }
+
+  object Env {
+    val leftTag = 0
+    val rightTag = 1
+    val both = 2
+    val bothLeftBias = 3
   }
 
 
   private val Left_  = Env[Any, Any]().Left
   private val Right_ = Env[Any, Any]().Right
   private val Both_  = Env[Any, Any]().Both
+  private val BothLeftBias_ = Env[Any, Any]().BothLeftBias
 
   def Get[I]: Env[I, Any]#Is[I] = Left_
   def L[I]: Env[I, Any]#Is[I] = Left_
   def R[I2]: Env[Any, I2]#T[I2] = Right_
   def Both[I, I2]: Env[I, I2]#Y[ReceiveY[I, I2]] = Both_
+  def BothLeftBias[I, I2]: Env[I, I2]#Y[ReceiveY[I, I2]] = BothLeftBias_
 
 
   //////////////////////////////////////////////////////////////////////////////////////
@@ -1498,5 +1511,9 @@ object Process extends ProcessInstances {
       case End => Trampoline.done(p)
       case early: EarlyCause => Trampoline.done(p.injectCause(early))
     }))
+
+  def drive[O](p: Process[Task, O])(toDrive: Process[Task,_]): Process[Task, O] = {
+    ???
+  }
 }
 

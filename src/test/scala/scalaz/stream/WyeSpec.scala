@@ -104,6 +104,21 @@ class WyeSpec extends  Properties("Wye"){
     s.wye(s)(w).runLog.timed(3000).run.map(_.fold(identity, identity)).toList == List(1,1)
   }
 
+  def simpleMerge(w: Wye[Int,Int,Int]) = {
+    val s = Process.constant(1).take(1)
+    s.wye(s)(w).runLog.timed(3000).run.toList == List(1,1)
+  }
+
+  property("merge") = secure {
+    val w = wye.merge[Int]
+    simpleMerge(w)
+  }
+
+  property("mergeL") = secure {
+    val w = wye.mergeLeftBias[Int]
+    simpleMerge(w)
+  }
+
   property("interrupt.source.halt") = secure {
     val p1 = Process(1,2,3,4,6).toSource
     val i1 = repeatEval(Task.now(false))

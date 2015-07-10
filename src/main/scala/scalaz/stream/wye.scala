@@ -109,6 +109,15 @@ object wye {
       case HaltOne(rsn) => Halt(rsn)
     }
 
+  def mergeLeftBias[I]: Wye[I,I,I] =
+    receiveBothLeftBias {
+      case ReceiveL(i) => emit(i) ++ mergeLeftBias
+      case ReceiveR(i) => emit(i) ++ mergeLeftBias
+      case HaltL(End)   => awaitR.repeat
+      case HaltR(End)   => awaitL.repeat
+      case HaltOne(rsn) => Halt(rsn)
+    }
+
   /**
    * Like `merge`, but terminates whenever one side terminate.
    */
@@ -531,6 +540,9 @@ object wye {
   def receiveBoth[I,I2,O](rcv:ReceiveY[I,I2] => Wye[I,I2,O]): Wye[I,I2,O] =
     await(Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]])(rcv)
 
+  def receiveBothLeftBias[I, I2,O](rcv: ReceiveY[I, I2] => Wye[I,I2,O]): Wye[I,I2,O] =
+    await(BothLeftBias[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]])(rcv)
+
   def receiveBothOr[I,I2,O](fb:EarlyCause => Wye[I,I2,O] )(rcv:ReceiveY[I,I2] => Wye[I,I2,O]): Wye[I,I2,O] =
     awaitOr(Both[I,I2]: Env[I,I2]#Y[ReceiveY[I,I2]])(fb)(rcv)
 
@@ -540,7 +552,7 @@ object wye {
     def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):
     Option[(EarlyCause \/ I => Wye[I,I2,O])] = self match {
       case Await(req,rcv,_)
-        if req.tag == 0 =>
+        if req.tag == Env.leftTag =>
         Some((r : EarlyCause \/ I) =>
           Try(rcv.asInstanceOf[(EarlyCause \/ I) => Trampoline[Wye[I,I2,O]]](r).run)
         )
@@ -550,7 +562,7 @@ object wye {
     /** Like `AwaitL.unapply` only allows fast test that wye is awaiting on left side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitL[I,I2,O]):Boolean = self match {
-        case Await(req,rcv,_) if req.tag == 0 => true
+        case Await(req,rcv,_) if req.tag == Env.leftTag => true
         case _ => false
       }
     }
@@ -561,7 +573,7 @@ object wye {
     def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):
     Option[(EarlyCause \/ I2 => Wye[I,I2,O])] = self match {
       case Await(req,rcv,_)
-        if req.tag == 1 => Some((r : EarlyCause \/ I2) =>
+        if req.tag == Env.rightTag => Some((r : EarlyCause \/ I2) =>
         Try(rcv.asInstanceOf[(EarlyCause \/ I2) => Trampoline[Wye[I,I2,O]]](r).run)
       )
       case _ => None
@@ -570,7 +582,7 @@ object wye {
     /** Like `AwaitR.unapply` only allows fast test that wye is awaiting on right side */
     object is {
       def unapply[I,I2,O](self: WyeAwaitR[I,I2,O]):Boolean = self match {
-        case Await(req,rcv,_) if req.tag == 1 => true
+        case Await(req,rcv,_) if req.tag == Env.rightTag => true
         case _ => false
       }
     }
@@ -579,7 +591,7 @@ object wye {
     def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):
     Option[(ReceiveY[I,I2] => Wye[I,I2,O])] = self match {
       case Await(req,rcv,_)
-        if req.tag == 2 => Some((r : ReceiveY[I,I2]) =>
+        if req.tag == Env.both => Some((r : ReceiveY[I,I2]) =>
         Try(rcv.asInstanceOf[(EarlyCause \/ ReceiveY[I,I2]) => Trampoline[Wye[I,I2,O]]](right(r)).run)
       )
       case _ => None
@@ -589,11 +601,28 @@ object wye {
     /** Like `AwaitBoth.unapply` only allows fast test that wye is awaiting on both sides */
     object is {
       def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):Boolean = self match {
-        case Await(req,rcv,_) if req.tag == 2 => true
+        case Await(req,rcv,_) if req.tag == Env.both => true
         case _ => false
       }
     }
 
+  }
+  object AwaitBothLeftBias {
+//    def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):
+//    Option[(ReceiveY[I,I2] => Wye[I,I2,O])] = self match {
+//      case Await(req, rcv,_)
+//        if req.tag == Env.bothLeftBias => Some((r : ReceiveY[I,I2]) =>
+//        Try(rcv.asInstanceOf[(EarlyCause \/ ReceiveY[I, I2]) => Trampoline[Wye[I,I2,O]]](right(r)).run)
+//      )
+//      case _ => None
+//    }
+
+    object is {
+      def unapply[I,I2,O](self: WyeAwaitBoth[I,I2,O]):Boolean = self match {
+        case Await(req, rcv,_) if req.tag == Env.bothLeftBias => true
+        case _ => false
+      }
+    }
   }
 
   //////////////////////////////////////////////////////////////////
@@ -778,6 +807,12 @@ object wye {
               if (leftBias) {left = runSideLeft(left); right = runSideRight(right) }
               else {right = runSideRight(right); left = runSideLeft(left) }
               leftBias = !leftBias
+              (cur, cb)
+
+            case Step(AwaitBothLeftBias.is(), _) =>
+              println("made it here")
+              left = runSideLeft(left); right = runSideRight(right)
+              leftBias = false
               (cur, cb)
 
             case Halt(_) =>
